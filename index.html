@@ -1349,11 +1349,15 @@ function preloadHistory() {
 
   // Preload gym logs (7 days)
   const preloadGym = {"2026-02-14":{"bpSets":[],"cardioList":[{"type":"リカンベントバイク","min":0,"kcal":97}],"exerciseList":[{"name":"ジム（詳細記録なし）","w":0,"r":0,"s":0}]},"2026-02-21":{"bpSets":[],"cardioList":[{"type":"リカンベントバイク","min":50,"kcal":283}],"exerciseList":[{"name":"ベンチプレス（高ボリューム・詳細なし）","w":0,"r":0,"s":0},{"name":"レッグプレス","w":208,"r":0,"s":0}]},"2026-02-28":{"bpSets":[{"w":130,"r":5,"s":5,"vol":3250},{"w":100,"r":10,"s":3,"vol":3000},{"w":60,"r":10,"s":3,"vol":1800}],"cardioList":[{"type":"リカンベントバイク","min":30,"kcal":156}],"exerciseList":[{"name":"アダクション","w":62.5,"r":20,"s":3},{"name":"アブダクション","w":62.5,"r":20,"s":3}]},"2026-03-07":{"bpSets":[{"w":150,"r":3,"s":3,"vol":1350},{"w":130,"r":5,"s":3,"vol":1950},{"w":100,"r":10,"s":6,"vol":6000},{"w":60,"r":10,"s":10,"vol":6000}],"cardioList":[{"type":"トレッドミル","min":60,"kcal":283},{"type":"リカンベントバイク","min":30,"kcal":193}],"exerciseList":[{"name":"レッグプレス","w":208,"r":5,"s":3},{"name":"カーフレイズ","w":208,"r":20,"s":3}]},"2026-03-14":{"bpSets":[{"w":155,"r":3,"s":1,"vol":465},{"w":155,"r":5,"s":1,"vol":775},{"w":130,"r":5,"s":9,"vol":5850},{"w":100,"r":10,"s":6,"vol":6000},{"w":60,"r":10,"s":2,"vol":1200}],"cardioList":[{"type":"トレッドミル","min":40,"kcal":264},{"type":"リカンベントバイク","min":60,"kcal":361}],"exerciseList":[{"name":"アブダクション","w":60,"r":20,"s":3},{"name":"アダクション","w":60,"r":20,"s":3},{"name":"シーテッドレッグカール","w":40,"r":10,"s":3}]},"2026-03-21":{"bpSets":[{"w":150,"r":5,"s":3,"vol":2250},{"w":130,"r":10,"s":4,"vol":5200},{"w":100,"r":10,"s":5,"vol":5000},{"w":60,"r":10,"s":10,"vol":6000}],"cardioList":[{"type":"トレッドミル","min":53,"kcal":323}],"exerciseList":[]},"2026-03-28":{"bpSets":[{"w":150,"r":3,"s":5,"vol":2250},{"w":130,"r":5,"s":5,"vol":3250},{"w":100,"r":10,"s":4,"vol":4000},{"w":100,"r":10,"s":5,"vol":5000},{"w":60,"r":10,"s":5,"vol":3000},{"w":60,"r":15,"s":10,"vol":9000},{"w":60,"r":5,"s":2,"vol":600}],"cardioList":[{"type":"リカンベントバイク","min":10,"kcal":67},{"type":"トレッドミル","min":30,"kcal":169},{"type":"リカンベントバイク","min":20,"kcal":114}],"exerciseList":[]}};
-  // Force overwrite preloaded gym data (fixed historical records)
+  // Add gym preload only for dates not yet recorded by user
+  let gymUpdated = false;
   Object.entries(preloadGym).forEach(([date, log]) => {
-    gymLogs[date] = log;
+    if (!gymLogs[date]) {
+      gymLogs[date] = log;
+      gymUpdated = true;
+    }
   });
-  localStorage.setItem('gymLogs', JSON.stringify(gymLogs));
+  if (gymUpdated) { localStorage.setItem('gymLogs', JSON.stringify(gymLogs)); }
 }
 
 // Close modal on overlay click
@@ -1625,7 +1629,12 @@ if ('serviceWorker' in navigator) {
     .catch(e => console.log('SW error:', e));
 }
 
-preloadHistory();
+// Only preload once per version — never overwrite user data after that
+const PRELOAD_VERSION = 'v7'; // increment when preload data changes
+if (localStorage.getItem('preloadVersion') !== PRELOAD_VERSION) {
+  preloadHistory();
+  localStorage.setItem('preloadVersion', PRELOAD_VERSION);
+}
 init();
 </script>
 </body>
