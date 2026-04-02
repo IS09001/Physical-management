@@ -830,7 +830,9 @@ function updateBalance() {
   currentDay.fit = fit || null;
   const el = document.getElementById('balance-val');
   if (!fit) { el.textContent = '—'; el.className = 'balance-val'; return; }
-  const bal = round1(intake - fit);
+  const date = document.getElementById('today-date').value;
+  const cardioKcal = gymLogs[date]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
+  const bal = round1(intake - fit - cardioKcal);
   el.textContent = (bal >= 0 ? '+' : '') + bal;
   el.className = 'balance-val ' + (bal >= 0 ? 'plus' : 'minus');
 }
@@ -955,7 +957,8 @@ function renderHistory() {
     const d = days[date];
     const intake = round1(d.meals.reduce((s,m)=>s+m.kcal,0));
     const p = round1(d.meals.reduce((s,m)=>s+(m.p||0),0));
-    const bal = d.fit ? round1(intake - d.fit) : null;
+    const cardioKcal = gymLogs[date]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
+    const bal = d.fit ? round1(intake - d.fit - cardioKcal) : null;
     const balStr = bal !== null ? `<span class="history-balance" style="color:${bal>=0?'var(--accent3)':'var(--accent)'}">${bal>=0?'+':''}${bal}</span>` : '';
     const sleepStr = (d.sleepStart && d.sleepEnd) ? sleepDur(d.sleepStart, d.sleepEnd) : null;
     const bodyEntry = bodyLogs[date];
@@ -971,7 +974,7 @@ function renderHistory() {
         </div>
         <div class="history-stats">
           <div class="history-stat">摂取 <span>${intake}</span>kcal</div>
-          ${d.fit ? `<div class="history-stat">消費 <span>${d.fit}</span>kcal</div>` : ''}
+          ${d.fit ? `<div class="history-stat">消費 <span>${round1(d.fit + cardioKcal)}</span>kcal</div>` : ''}
           <div class="history-stat">P <span>${p}</span>g</div>
           ${sleepStr ? `<div class="history-stat">💤 <span>${sleepStr}</span></div>` : ''}
           ${gymLogs[date] ? `<div class="history-stat">🏋️ <span>${(()=>{const g=gymLogs[date];const vol=g.bpSets?.reduce((s,b)=>s+b.vol,0)||0;const cardioKcal=g.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;return [vol?'BP '+vol.toLocaleString()+'kg':'',cardioKcal?'有酸素 '+cardioKcal+'kcal':''].filter(Boolean).join(' / ')||'記録あり';})()} </span></div>` : ''}
@@ -995,7 +998,8 @@ function showDayDetail(date) {
   const p = round1(d.meals.reduce((s,m)=>s+(m.p||0),0));
   const f = round1(d.meals.reduce((s,m)=>s+(m.f||0),0));
   const c = round1(d.meals.reduce((s,m)=>s+(m.c||0),0));
-  const bal = d.fit ? round1(intake - d.fit) : null;
+  const detailCardioKcal = gymLogs[date]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
+  const bal = d.fit ? round1(intake - d.fit - detailCardioKcal) : null;
   const sorted = [...d.meals].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
   let html = `
     <div class="stats-grid" style="margin-bottom:12px;">
@@ -1007,7 +1011,7 @@ function showDayDetail(date) {
   `;
   if (d.fit || bal !== null) {
     html += `<div style="display:flex;justify-content:space-between;margin-bottom:12px;padding:10px;background:var(--bg3);border-radius:8px;">
-      <div style="font-size:12px;color:var(--text2)">Fit消費: <span style="color:var(--text);font-family:'Space Mono',monospace">${d.fit||'—'}</span></div>
+      <div style="font-size:12px;color:var(--text2)">消費: <span style="color:var(--text);font-family:'Space Mono',monospace">${d.fit||'—'}${detailCardioKcal?`<span style="font-size:10px;color:var(--text3)">+機器${detailCardioKcal}</span>`:''}=<b>${round1((d.fit||0)+detailCardioKcal)}</b></span></div>
       <div style="font-size:12px;color:var(--text2)">収支: <span style="font-family:'Space Mono',monospace;color:${bal>=0?'var(--accent3)':'var(--accent)'};font-weight:700">${bal!==null?(bal>=0?'+':'')+bal:'—'}</span></div>
     </div>`;
   }
@@ -1343,16 +1347,13 @@ function preloadHistory() {
   });
   if (bodyUpdated) { localStorage.setItem('bodyLogs', JSON.stringify(bodyLogs)); }
 
-  // Preload gym logs from past sessions (4 days)
-  const preloadGym = {"2026-02-14":{"bpSets":[],"cardioList":[{"type":"リカンベントバイク","min":0,"kcal":97}],"exerciseList":[{"name":"ジム（詳細記録なし）","w":0,"r":0,"s":0}]},"2026-02-28":{"bpSets":[{"w":130,"r":5,"s":5,"vol":3250},{"w":100,"r":10,"s":3,"vol":3000},{"w":60,"r":10,"s":3,"vol":1800}],"cardioList":[{"type":"リカンベントバイク","min":30,"kcal":156}],"exerciseList":[{"name":"アダクション","w":62.5,"r":20,"s":3},{"name":"アブダクション","w":62.5,"r":20,"s":3}]},"2026-03-07":{"bpSets":[{"w":150,"r":3,"s":3,"vol":1350},{"w":130,"r":5,"s":3,"vol":1950},{"w":100,"r":10,"s":6,"vol":6000},{"w":60,"r":10,"s":10,"vol":6000}],"cardioList":[{"type":"トレッドミル","min":60,"kcal":283},{"type":"リカンベントバイク","min":30,"kcal":193}],"exerciseList":[{"name":"レッグプレス","w":208,"r":5,"s":3},{"name":"カーフレイズ","w":208,"r":20,"s":3}]},"2026-03-14":{"bpSets":[{"w":155,"r":3,"s":1,"vol":465},{"w":155,"r":5,"s":1,"vol":775},{"w":130,"r":5,"s":9,"vol":5850},{"w":100,"r":10,"s":6,"vol":6000},{"w":60,"r":10,"s":2,"vol":1200}],"cardioList":[{"type":"トレッドミル","min":40,"kcal":264},{"type":"リカンベントバイク","min":60,"kcal":361}],"exerciseList":[{"name":"アブダクション","w":60,"r":20,"s":3},{"name":"アダクション","w":60,"r":20,"s":3},{"name":"シーテッドレッグカール","w":40,"r":10,"s":3}]},"2026-02-21":{"bpSets":[],"cardioList":[{"type":"リカンベントバイク","min":50,"kcal":283}],"exerciseList":[{"name":"ベンチプレス（高ボリューム・詳細なし）","w":0,"r":0,"s":0},{"name":"レッグプレス","w":208,"r":0,"s":0}]},"2026-03-21":{"bpSets":[{"w":150,"r":5,"s":3,"vol":2250},{"w":130,"r":10,"s":4,"vol":5200},{"w":100,"r":10,"s":5,"vol":5000},{"w":60,"r":10,"s":10,"vol":6000}],"cardioList":[{"type":"トレッドミル","min":53,"kcal":323}],"exerciseList":[]},"2026-03-28":{"bpSets":[{"w":150,"r":3,"s":5,"vol":2250},{"w":130,"r":5,"s":5,"vol":3250},{"w":100,"r":10,"s":4,"vol":4000},{"w":100,"r":10,"s":5,"vol":5000},{"w":60,"r":10,"s":5,"vol":3000},{"w":60,"r":15,"s":10,"vol":9000},{"w":60,"r":5,"s":2,"vol":600}],"cardioList":[{"type":"リカンベントバイク","min":10,"kcal":67},{"type":"トレッドミル","min":30,"kcal":169},{"type":"リカンベントバイク","min":20,"kcal":114}],"exerciseList":[]};
-  let gymUpdated = false;
+  // Preload gym logs (7 days)
+  const preloadGym = {"2026-02-14":{"bpSets":[],"cardioList":[{"type":"リカンベントバイク","min":0,"kcal":97}],"exerciseList":[{"name":"ジム（詳細記録なし）","w":0,"r":0,"s":0}]},"2026-02-21":{"bpSets":[],"cardioList":[{"type":"リカンベントバイク","min":50,"kcal":283}],"exerciseList":[{"name":"ベンチプレス（高ボリューム・詳細なし）","w":0,"r":0,"s":0},{"name":"レッグプレス","w":208,"r":0,"s":0}]},"2026-02-28":{"bpSets":[{"w":130,"r":5,"s":5,"vol":3250},{"w":100,"r":10,"s":3,"vol":3000},{"w":60,"r":10,"s":3,"vol":1800}],"cardioList":[{"type":"リカンベントバイク","min":30,"kcal":156}],"exerciseList":[{"name":"アダクション","w":62.5,"r":20,"s":3},{"name":"アブダクション","w":62.5,"r":20,"s":3}]},"2026-03-07":{"bpSets":[{"w":150,"r":3,"s":3,"vol":1350},{"w":130,"r":5,"s":3,"vol":1950},{"w":100,"r":10,"s":6,"vol":6000},{"w":60,"r":10,"s":10,"vol":6000}],"cardioList":[{"type":"トレッドミル","min":60,"kcal":283},{"type":"リカンベントバイク","min":30,"kcal":193}],"exerciseList":[{"name":"レッグプレス","w":208,"r":5,"s":3},{"name":"カーフレイズ","w":208,"r":20,"s":3}]},"2026-03-14":{"bpSets":[{"w":155,"r":3,"s":1,"vol":465},{"w":155,"r":5,"s":1,"vol":775},{"w":130,"r":5,"s":9,"vol":5850},{"w":100,"r":10,"s":6,"vol":6000},{"w":60,"r":10,"s":2,"vol":1200}],"cardioList":[{"type":"トレッドミル","min":40,"kcal":264},{"type":"リカンベントバイク","min":60,"kcal":361}],"exerciseList":[{"name":"アブダクション","w":60,"r":20,"s":3},{"name":"アダクション","w":60,"r":20,"s":3},{"name":"シーテッドレッグカール","w":40,"r":10,"s":3}]},"2026-03-21":{"bpSets":[{"w":150,"r":5,"s":3,"vol":2250},{"w":130,"r":10,"s":4,"vol":5200},{"w":100,"r":10,"s":5,"vol":5000},{"w":60,"r":10,"s":10,"vol":6000}],"cardioList":[{"type":"トレッドミル","min":53,"kcal":323}],"exerciseList":[]},"2026-03-28":{"bpSets":[{"w":150,"r":3,"s":5,"vol":2250},{"w":130,"r":5,"s":5,"vol":3250},{"w":100,"r":10,"s":4,"vol":4000},{"w":100,"r":10,"s":5,"vol":5000},{"w":60,"r":10,"s":5,"vol":3000},{"w":60,"r":15,"s":10,"vol":9000},{"w":60,"r":5,"s":2,"vol":600}],"cardioList":[{"type":"リカンベントバイク","min":10,"kcal":67},{"type":"トレッドミル","min":30,"kcal":169},{"type":"リカンベントバイク","min":20,"kcal":114}],"exerciseList":[]}};
+  // Force overwrite preloaded gym data (fixed historical records)
   Object.entries(preloadGym).forEach(([date, log]) => {
-    if (!gymLogs[date]) {
-      gymLogs[date] = log;
-      gymUpdated = true;
-    }
+    gymLogs[date] = log;
   });
-  if (gymUpdated) { localStorage.setItem('gymLogs', JSON.stringify(gymLogs)); }
+  localStorage.setItem('gymLogs', JSON.stringify(gymLogs));
 }
 
 // Close modal on overlay click
@@ -1493,9 +1494,10 @@ function renderGraph() {
     const bal = dates.map(d => {
       const day = days[d];
       if (!day || !day.fit) return null;
-      return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit);
+      const gCardio = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
+      return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio);
     });
-    const fit = dates.map(d => days[d]?.fit || null);
+    const fit = dates.map(d => d in gymLogs ? round1((days[d]?.fit||0)+(gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0)) : (days[d]?.fit||null));
     const intake = dates.map(d => days[d] ? round1(days[d].meals.reduce((s,m)=>s+m.kcal,0)) : null);
     datasets = [
       { label:'摂取', data: intake, borderColor: c.accent2, backgroundColor: c.accent2+'22', tension:0.3, pointRadius:2, fill:false },
@@ -1519,7 +1521,8 @@ function renderGraph() {
     const dailyBal = dates.map(d => {
       const day = days[d];
       if (!day || !day.fit) return null;
-      return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit);
+      const gCardio2 = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
+      return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio2);
     });
     datasets = [
       { label:'体重(kg)', data: weights, borderColor: c.accent2, tension:0.3, pointRadius:4, fill:false, yAxisID:'y', spanGaps:true },
@@ -1537,7 +1540,8 @@ function renderGraph() {
     const bal = dates.map(d => {
       const day = days[d];
       if (!day || !day.fit) return null;
-      return round1((day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit)/1000);
+      const gCardio3 = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
+      return round1((day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio3)/1000);
     });
     datasets = [
       { label:'睡眠時間(h)', data: dur, borderColor: c.purple, backgroundColor: c.purple+'33', tension:0.3, pointRadius:3, fill:true, yAxisID:'y' },
