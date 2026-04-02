@@ -722,7 +722,7 @@ let currentAddFoodList = [...foods];
 
 // ==================== INIT ====================
 function init() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   document.getElementById('today-date').value = today;
   document.getElementById('gym-date').value = today;
   document.getElementById('header-date').textContent = formatDateJP(today);
@@ -1218,7 +1218,7 @@ function showScreen(name) {
   document.getElementById('nav-' + name).classList.add('active');
   if (name === 'history') renderHistory();
   if (name === 'foods') renderFoodDB();
-  if (name === 'body') { const d=new Date().toISOString().split('T')[0]; document.getElementById('body-date').value=d; renderBodyLog(); renderGraph(); }
+  if (name === 'body') { const _d=new Date(); const _ds=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`; document.getElementById('body-date').value=_ds; renderBodyLog(); renderGraph(); }
 }
 
 // ==================== EXPORT / IMPORT ====================
