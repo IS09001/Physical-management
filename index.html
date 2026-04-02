@@ -531,6 +531,7 @@
       <button class="tab-btn" onclick="switchGraph('pfc')" id="gtab-pfc">PFC</button>
       <button class="tab-btn" onclick="switchGraph('body')" id="gtab-body">体組成</button>
       <button class="tab-btn" onclick="switchGraph('sleep')" id="gtab-sleep">睡眠</button>
+      <button class="tab-btn" onclick="switchGraph('gym')" id="gtab-gym">ジム</button>
     </div>
     <div style="margin-bottom:8px;display:flex;gap:4px;flex-wrap:wrap;" id="range-btns">
       <button class="btn btn-secondary btn-sm range-btn active" onclick="setGraphRange(7)" data-r="7">1週</button>
@@ -973,6 +974,7 @@ function renderHistory() {
           ${d.fit ? `<div class="history-stat">消費 <span>${d.fit}</span>kcal</div>` : ''}
           <div class="history-stat">P <span>${p}</span>g</div>
           ${sleepStr ? `<div class="history-stat">💤 <span>${sleepStr}</span></div>` : ''}
+          ${gymLogs[date] ? `<div class="history-stat">🏋️ <span>${(()=>{const g=gymLogs[date];const vol=g.bpSets?.reduce((s,b)=>s+b.vol,0)||0;const cardioKcal=g.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;return [vol?'BP '+vol.toLocaleString()+'kg':'',cardioKcal?'有酸素 '+cardioKcal+'kcal':''].filter(Boolean).join(' / ')||'記録あり';})()} </span></div>` : ''}
         </div>
       </div>
     `;
@@ -1019,6 +1021,34 @@ function showDayDetail(date) {
       ${bEntry.fat ? `<div style="font-size:13px;color:var(--yellow)">体脂肪 <b>${bEntry.fat}</b>%</div>` : ''}
       ${bEntry.weight && bEntry.fat ? `<div style="font-size:13px;color:var(--text2)">除脂肪 <b>${round1(bEntry.weight*(1-bEntry.fat/100))}</b>kg</div>` : ''}
     </div>`;
+  }
+  const gym = gymLogs[date];
+  if (gym) {
+    html += '<div class="section-label">🏋️ ジム</div>';
+    if (gym.bpSets?.length) {
+      const bpVol = gym.bpSets.reduce((s,b)=>s+b.vol,0);
+      html += `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:6px;">`;
+      html += `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">ベンチプレス <span style="font-family:'Space Mono',monospace;color:var(--accent);font-weight:700">${bpVol.toLocaleString()}kg</span> 総挙上量</div>`;
+      gym.bpSets.forEach(b => {
+        html += `<div style="font-size:11px;color:var(--text3);">${b.w}kg × ${b.r}rep × ${b.s}set = ${b.vol}kg</div>`;
+      });
+      html += `</div>`;
+    }
+    if (gym.cardioList?.length) {
+      html += `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:6px;">`;
+      html += `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">有酸素 <span style="font-family:'Space Mono',monospace;color:var(--accent2)">${gym.cardioList.reduce((s,c)=>s+c.kcal,0)}kcal</span></div>`;
+      gym.cardioList.forEach(c => {
+        html += `<div style="font-size:11px;color:var(--text3);">${c.type} ${c.min}分${c.kcal?' / '+c.kcal+'kcal':''}</div>`;
+      });
+      html += `</div>`;
+    }
+    if (gym.exerciseList?.length) {
+      html += `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:6px;">`;
+      gym.exerciseList.forEach(e => {
+        html += `<div style="font-size:11px;color:var(--text3);">${e.name}${e.w?' '+e.w+'kg':''}${e.r?' ×'+e.r+'rep':''}${e.s?' ×'+e.s+'set':''}</div>`;
+      });
+      html += `</div>`;
+    }
   }
   html += '<div class="section-label">食事</div>';
   sorted.forEach(m => {
@@ -1402,7 +1432,7 @@ function applyCustomRange() {
 }
 function switchGraph(type) {
   graphType = type;
-  ['balance','pfc','body','sleep'].forEach(t => {
+  ['balance','pfc','body','sleep','gym'].forEach(t => {
     document.getElementById('gtab-'+t).className = 'tab-btn' + (t===type?' active':'');
   });
   renderGraph();
@@ -1502,6 +1532,43 @@ function renderGraph() {
       { label:'睡眠時間(h)', data: dur, borderColor: c.purple, backgroundColor: c.purple+'33', tension:0.3, pointRadius:3, fill:true, yAxisID:'y' },
       { label:'収支(÷1000)', data: bal, borderColor: c.accent3, tension:0.3, pointRadius:2, fill:false, borderDash:[4,4], yAxisID:'y2' },
     ];
+  } else if (graphType === 'gym') {
+    // Use all dates that have gym logs (not filtered by days)
+    const gymDates = Object.keys(gymLogs).sort().filter(d => graphRange === 0 || d >= (() => { const c=new Date(); c.setDate(c.getDate()-graphRange); return c.toISOString().split('T')[0]; })());
+    const gymLabels = gymDates.map(d => { const dd=new Date(d+'T12:00:00'); return `${dd.getMonth()+1}/${dd.getDate()}`; });
+    const bpVols = gymDates.map(d => gymLogs[d]?.bpSets?.reduce((s,b)=>s+b.vol,0)||null);
+    const cardioKcals = gymDates.map(d => {
+      const kcal = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
+      return kcal > 0 ? kcal : null;
+    });
+    const weights = gymDates.map(d => bodyLogs[d]?.weight||null);
+    // Override labels for this graph
+    if (chartInst) { chartInst.destroy(); chartInst = null; }
+    chartInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: gymLabels,
+        datasets: [
+          { label:'BP総挙上量(kg)', data: bpVols, backgroundColor: c.accent+'88', borderColor: c.accent, borderWidth:1, yAxisID:'y', order:2 },
+          { label:'有酸素(kcal)', data: cardioKcals, backgroundColor: c.accent2+'88', borderColor: c.accent2, borderWidth:1, yAxisID:'y', order:2 },
+          { label:'体重(kg)', data: weights, type:'line', borderColor: c.yellow, tension:0.3, pointRadius:4, fill:false, yAxisID:'y2', order:1, spanGaps:true },
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:true,
+        interaction:{ mode:'index', intersect:false },
+        plugins: {
+          legend:{ labels:{ color:c.text2, font:{size:10}, boxWidth:12, padding:8 } },
+          tooltip:{ backgroundColor:'#1e2023', titleColor:'#e8eaed', bodyColor:'#9aa0aa', borderColor:'#2a2d32', borderWidth:1 }
+        },
+        scales: {
+          y:  { position:'left',  grid:{color:c.border}, ticks:{color:c.text2,font:{size:10}}, title:{display:true,text:'kg / kcal',color:c.text2,font:{size:9}} },
+          y2: { position:'right', grid:{drawOnChartArea:false}, ticks:{color:c.text2,font:{size:10}}, title:{display:true,text:'体重(kg)',color:c.text2,font:{size:9}} },
+          x:  { grid:{color:c.border}, ticks:{color:c.text2,font:{size:9},maxRotation:45} }
+        }
+      }
+    });
+    return; // early return, chart already rendered
   }
 
   const scales = graphType === 'body' ? {
