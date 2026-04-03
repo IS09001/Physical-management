@@ -1824,31 +1824,21 @@ async function setupSaveFile() {
     return;
   }
   try {
-    // まず新規作成（showSaveFilePicker）を試みる → キャンセルなら既存ファイルを選ぶ
-    let handle;
-    if ('showSaveFilePicker' in window) {
-      try {
-        handle = await window.showSaveFilePicker({
-          suggestedName: 'デイリー記録.json',
-          types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }]
-        });
-      } catch(e) {
-        if (e.name === 'AbortError') throw e; // キャンセルはそのまま上に
-        // showSaveFilePicker非対応なら既存ファイル選択へ
-        const [h] = await window.showOpenFilePicker({
-          types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }],
-          multiple: false
-        });
-        handle = h;
-      }
+    // 新規作成 or 既存ファイルを選ばせる
+    const isNew = confirm('保存ファイルの設定\n\n・初めて使う場合 → OK（新規作成）\n・以前のデータを引き継ぐ場合 → キャンセル（既存ファイルを選択）');
+    let h2;
+    if (isNew && 'showSaveFilePicker' in window) {
+      h2 = await window.showSaveFilePicker({
+        suggestedName: 'デイリー記録.json',
+        types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }]
+      });
     } else {
       const [h] = await window.showOpenFilePicker({
         types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }],
         multiple: false
       });
-      handle = h;
+      h2 = h;
     }
-    const [h2] = [handle]; // 変数統一
     const perm = await h2.requestPermission({ mode: 'readwrite' });
     if (perm !== 'granted') { showToast('書き込み権限が必要です'); return; }
     const file = await h2.getFile();
