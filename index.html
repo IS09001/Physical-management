@@ -1700,7 +1700,9 @@ function setFileStatus(cls, text, onclick) {
 }
 
 function getAllData() {
-  return { days, gymLogs, bodyLogs, foods: foods.filter(f=>f.custom), savedAt: new Date().toISOString() };
+  // Merge preloadedDays + user days (user days take priority)
+  const allDays = Object.assign({}, preloadedDays, days);
+  return { days: allDays, gymLogs, bodyLogs, foods: foods.filter(f=>f.custom), savedAt: new Date().toISOString() };
 }
 
 function applyData(data) {
