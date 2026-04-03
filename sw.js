@@ -1,4 +1,4 @@
-const CACHE_NAME = 'daily-v2';
+const CACHE_NAME = 'daily-v3';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -8,7 +8,6 @@ const ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js'
 ];
 
-// Install: precache all assets
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME)
@@ -17,7 +16,6 @@ self.addEventListener('install', e => {
   );
 });
 
-// Activate: clean old caches
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -26,7 +24,6 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch: cache-first, fallback to network
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(

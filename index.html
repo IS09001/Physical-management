@@ -1326,7 +1326,8 @@ function preloadHistory() {
 
   // 04/01: full meal data
   const d0401 = "2026-04-01";
-  if (!days[d0401] || !days[d0401].meals || days[d0401].meals.length <= 1) {
+  // Only set if date has no data at all (not just few meals)
+  if (!days[d0401]) {
     days[d0401] = {
       meals: [{"name": "自家製サラダチキン150g", "kcal": 169.5, "p": 34.8, "f": 1.5, "c": 0, "time": "07:30"}, {"name": "絹ごし豆腐300g 1個", "kcal": 153, "p": 15, "f": 7.5, "c": 7.5, "time": "07:30"}, {"name": "自家製サラダチキン 145g", "kcal": 163.9, "p": 33.8, "f": 2.8, "c": 0, "time": "12:09"}, {"name": "木綿豆腐300g 1個", "kcal": 186, "p": 15, "f": 11.4, "c": 6.6, "time": "12:09"}, {"name": "菓子パン3種", "kcal": 1203, "p": 20.2, "f": 57, "c": 155, "time": "14:51"}, {"name": "自家製サラダチキン 157g", "kcal": 177.4, "p": 36.6, "f": 3, "c": 0, "time": "18:33"}, {"name": "木綿豆腐300g 1個", "kcal": 186, "p": 15, "f": 11.4, "c": 6.6, "time": "18:33"}, {"name": "大きなおにぎり しゃけ", "kcal": 283, "p": 7.7, "f": 2.5, "c": 58.6, "time": "18:33"}, {"name": "十勝バターチョコチップスティック 4本", "kcal": 472, "p": 9.2, "f": 15.2, "c": 76, "time": "18:33"}, {"name": "さつまいも蒸しパン4個入り", "kcal": 340, "p": 4.4, "f": 1.6, "c": 78.4, "time": "18:33"}],
       fit: 1996,
@@ -1629,11 +1630,10 @@ if ('serviceWorker' in navigator) {
     .catch(e => console.log('SW error:', e));
 }
 
-// Only preload once per version — never overwrite user data after that
-const PRELOAD_VERSION = 'v7'; // increment when preload data changes
-if (localStorage.getItem('preloadVersion') !== PRELOAD_VERSION) {
+// Preload runs ONLY when localStorage is completely empty (first install only)
+// Never runs again after the user has any data
+if (!localStorage.getItem('days')) {
   preloadHistory();
-  localStorage.setItem('preloadVersion', PRELOAD_VERSION);
 }
 init();
 </script>
