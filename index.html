@@ -1496,7 +1496,7 @@ function getDateRange() {
   if (graphRange === 0) return allDates;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - graphRange);
-  const cutStr = cutoff.toISOString().split('T')[0];
+  const cutStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;
   return allDates.filter(d => d >= cutStr);
 }
 
@@ -1531,8 +1531,8 @@ function renderGraph() {
       const gCardio = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
       return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio);
     });
-    const fit = dates.map(d => d in gymLogs ? round1((days[d]?.fit||0)+(gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0)) : (days[d]?.fit||null));
-    const intake = dates.map(d => days[d] ? round1(days[d].meals.reduce((s,m)=>s+m.kcal,0)) : null);
+    const fit = dates.map(d => { const _d=getMergedDay(d); return _d?.fit ? round1(_d.fit+(gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0)) : null; });
+    const intake = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+m.kcal,0)) : null; });
     datasets = [
       { label:'摂取', data: intake, borderColor: c.accent2, backgroundColor: c.accent2+'22', tension:0.3, pointRadius:2, fill:false },
       { label:'消費', data: fit, borderColor: c.accent, backgroundColor: c.accent+'22', tension:0.3, pointRadius:2, fill:false },
@@ -1540,9 +1540,9 @@ function renderGraph() {
         tension:0.3, pointRadius:3, fill: { target:'origin', above: c.accent3+'33', below: c.accent+'33' } },
     ];
   } else if (graphType === 'pfc') {
-    const pp = dates.map(d => days[d] ? round1(days[d].meals.reduce((s,m)=>s+(m.p||0),0)) : null);
-    const ff = dates.map(d => days[d] ? round1(days[d].meals.reduce((s,m)=>s+(m.f||0),0)) : null);
-    const cc = dates.map(d => days[d] ? round1(days[d].meals.reduce((s,m)=>s+(m.c||0),0)) : null);
+    const pp = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+(m.p||0),0)) : null; });
+    const ff = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+(m.f||0),0)) : null; });
+    const cc = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+(m.c||0),0)) : null; });
     datasets = [
       { label:'P(g)', data: pp, borderColor: c.accent, tension:0.3, pointRadius:2, fill:false },
       { label:'F(g)', data: ff, borderColor: c.yellow, tension:0.3, pointRadius:2, fill:false },
@@ -1583,7 +1583,7 @@ function renderGraph() {
     ];
   } else if (graphType === 'gym') {
     // Use all dates that have gym logs (not filtered by days)
-    const gymDates = Object.keys(gymLogs).sort().filter(d => graphRange === 0 || d >= (() => { const c=new Date(); c.setDate(c.getDate()-graphRange); return c.toISOString().split('T')[0]; })());
+    const gymDates = Object.keys(gymLogs).sort().filter(d => graphRange === 0 || d >= (() => { const c=new Date(); c.setDate(c.getDate()-graphRange); return `${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,'0')}-${String(c.getDate()).padStart(2,'0')}`; })());
     const gymLabels = gymDates.map(d => { const dd=new Date(d+'T12:00:00'); return `${dd.getMonth()+1}/${dd.getDate()}`; });
     const bpVols = gymDates.map(d => gymLogs[d]?.bpSets?.reduce((s,b)=>s+b.vol,0)||null);
     const cardioKcals = gymDates.map(d => {
