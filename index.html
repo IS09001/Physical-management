@@ -672,6 +672,21 @@
   </div>
 </div>
 
+<!-- ============ MODAL: FILE SETUP ============ -->
+<div class="modal-overlay" id="modal-file-setup">
+  <div class="modal">
+    <div class="modal-title">
+      保存ファイルの設定
+      <button class="modal-close" onclick="closeModal('modal-file-setup')">✕</button>
+    </div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">データをJSONファイルに保存します。</p>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="btn btn-primary btn-full" onclick="doSetupNew()">📄 新規作成（初回）</button>
+      <button class="btn btn-secondary btn-full" onclick="doSetupExisting()">📂 既存ファイルを選択（再リンク・引き継ぎ）</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL: HISTORY DETAIL ============ -->
 <div class="modal-overlay" id="modal-history-detail">
   <div class="modal">
@@ -1815,17 +1830,28 @@ async function saveToFile() {
   } catch(e) { setFileStatus('error', '⚠️ 書込失敗', () => setupSaveFile()); return false; }
 }
 
-async function setupSaveFile() {
+function setupSaveFile() {
   if (!FILE_API) {
-    // File API非対応 → ダウンロード方式のメニューを表示
-    const choice = confirm('バックアップファイルをダウンロードしますか？\n\n「キャンセル」を選ぶとバックアップから復元します');
+    const choice = window.confirm('バックアップをダウンロードしますか？\nキャンセルで既存ファイルから復元します');
     if (choice) downloadBackup();
     else importFromFileInput();
     return;
   }
+  openModal('modal-file-setup');
+}
+
+async function doSetupNew() {
+  closeModal('modal-file-setup');
+  await _doSetup(true);
+}
+
+async function doSetupExisting() {
+  closeModal('modal-file-setup');
+  await _doSetup(false);
+}
+
+async function _doSetup(isNew) {
   try {
-    // 新規作成 or 既存ファイルを選ばせる
-    const isNew = confirm('保存ファイルの設定\n\n・初めて使う場合 → OK（新規作成）\n・以前のデータを引き継ぐ場合 → キャンセル（既存ファイルを選択）');
     let h2;
     if (isNew && 'showSaveFilePicker' in window) {
       h2 = await window.showSaveFilePicker({
@@ -1851,11 +1877,11 @@ async function setupSaveFile() {
     showToast('保存先を設定しました ✓');
     refreshAllViews();
   } catch(e) {
-    if (e.name !== 'AbortError') showToast('設定をキャンセルしました');
+    if (e.name !== 'AbortError') showToast('ファイル設定に失敗しました');
   }
 }
 
-// ==================== PWA ====================// ==================== PWA ====================// ==================== PWA ====================
+// ==================== PWA ====================
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js', {scope: './'})
     .then(() => console.log('SW registered'))
