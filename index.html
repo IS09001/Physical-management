@@ -311,6 +311,10 @@
   .detail-meal { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 12px; }
   .detail-meal:last-child { border-bottom: none; }
 
+  /* File status */
+  #file-status.connected { color: var(--accent); }
+  #file-status.error { color: var(--red); }
+
   /* Chart */
   canvas { display:block; }
   .chart-legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; }
@@ -335,7 +339,10 @@
     <div class="header-title">デイリー記録</div>
     <div class="header-date" id="header-date"></div>
   </div>
-  <div id="header-badge"></div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+    <div id="file-status" style="font-size:10px;color:var(--text3);cursor:pointer;" onclick="setupSaveFile()">📂 未設定</div>
+    <div id="header-badge"></div>
+  </div>
 </div>
 
 <!-- TOAST -->
@@ -710,7 +717,16 @@ const DEFAULT_FOODS = [
 
 let foods = JSON.parse(localStorage.getItem('foods') || 'null') || DEFAULT_FOODS;
 let days = JSON.parse(localStorage.getItem('days') || '{}');
+let preloadedDays = JSON.parse(localStorage.getItem('preloadedDays') || '{}');
 let gymLogs = JSON.parse(localStorage.getItem('gymLogs') || '{}');
+
+// Merge: user days take priority over preloaded days
+function getMergedDay(date) {
+  return days[date] || preloadedDays[date] || null;
+}
+function getAllDates() {
+  return [...new Set([...Object.keys(preloadedDays), ...Object.keys(days)])].sort();
+}
 
 // Current state
 let currentDay = { meals:[], fit:null, sleepStart:'', sleepEnd:'' };
@@ -750,8 +766,9 @@ function formatDateJP(dateStr) {
 function loadDay() {
   const date = document.getElementById('today-date').value;
   document.getElementById('header-date').textContent = formatDateJP(date);
-  if (days[date]) {
-    currentDay = JSON.parse(JSON.stringify(days[date]));
+  const mergedDay = getMergedDay(date);
+  if (mergedDay) {
+    currentDay = JSON.parse(JSON.stringify(mergedDay));
   } else {
     currentDay = { meals:[], fit:null, sleepStart:'', sleepEnd:'' };
   }
@@ -844,7 +861,7 @@ function saveDay() {
   currentDay.fit = parseFloat(document.getElementById('fit-kcal').value) || null;
   days[date] = JSON.parse(JSON.stringify(currentDay));
   localStorage.setItem('days', JSON.stringify(days));
-  showToast('保存しました ✓');
+  saveToFile().then(ok => showToast(ok ? '保存しました（ファイル含む）✓' : '保存しました ✓'));
 }
 
 // ==================== ADD FOOD MODAL ====================
@@ -951,10 +968,10 @@ function switchAddTab(tab) {
 // ==================== HISTORY ====================
 function renderHistory() {
   const list = document.getElementById('history-list');
-  const keys = Object.keys(days).sort().reverse();
+  const keys = getAllDates().reverse();
   if (!keys.length) { list.innerHTML = '<div class="empty">記録がありません</div>'; return; }
   list.innerHTML = keys.map(date => {
-    const d = days[date];
+    const d = getMergedDay(date);
     const intake = round1(d.meals.reduce((s,m)=>s+m.kcal,0));
     const p = round1(d.meals.reduce((s,m)=>s+(m.p||0),0));
     const cardioKcal = gymLogs[date]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
@@ -992,7 +1009,7 @@ function sleepDur(s, e) {
 }
 
 function showDayDetail(date) {
-  const d = days[date];
+  const d = getMergedDay(date);
   document.getElementById('detail-date-title').textContent = formatDateJP(date);
   const intake = round1(d.meals.reduce((s,m)=>s+m.kcal,0));
   const p = round1(d.meals.reduce((s,m)=>s+(m.p||0),0));
@@ -1137,6 +1154,7 @@ function saveGym() {
   const date = document.getElementById('gym-date').value;
   gymLogs[date] = { bpSets:[...bpSets], cardioList:[...cardioList], exerciseList:[...exerciseList] };
   localStorage.setItem('gymLogs', JSON.stringify(gymLogs));
+  saveToFile();
   showToast('ジム記録を保存しました ✓');
 }
 
@@ -1224,6 +1242,7 @@ function showScreen(name) {
 // ==================== EXPORT / IMPORT ====================
 function exportData() {
   const data = { days, gymLogs, foods: foods.filter(f => f.custom), exportedAt: new Date().toISOString() };
+  // preloadedDays is excluded — it gets rebuilt on fresh install
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1311,30 +1330,24 @@ function preloadHistory() {
     const [ss, se] = sleepMap[date] || ['', ''];
     const existing = days[date];
     const existingHasPFC = existing?.meals?.some(m => m.p > 0);
-    if (!existing || (!existingHasPFC && hasPFC)) {
-      days[date] = { meals:[{ name, kcal: intake, p, f, c, time:'' }], fit,
-        sleepStart: existing?.sleepStart || ss,
-        sleepEnd:   existing?.sleepEnd   || se };
-      count++;
-    } else if (existing && !existing.sleepStart && ss) {
-      existing.sleepStart = ss;
-      existing.sleepEnd = se;
-      count++;
-    }
+    // Write to preloadedDays only — never touch user's days
+    preloadedDays[date] = { meals:[{ name, kcal: intake, p, f, c, time:'' }], fit,
+      sleepStart: ss, sleepEnd: se };
+    count++;
   });
-  if (count > 0) { localStorage.setItem('days', JSON.stringify(days)); }
+  if (count > 0) { localStorage.setItem('preloadedDays', JSON.stringify(preloadedDays)); }
 
   // 04/01: full meal data
   const d0401 = "2026-04-01";
   // Only set if date has no data at all (not just few meals)
   if (!days[d0401]) {
-    days[d0401] = {
+    preloadedDays[d0401] = {
       meals: [{"name": "自家製サラダチキン150g", "kcal": 169.5, "p": 34.8, "f": 1.5, "c": 0, "time": "07:30"}, {"name": "絹ごし豆腐300g 1個", "kcal": 153, "p": 15, "f": 7.5, "c": 7.5, "time": "07:30"}, {"name": "自家製サラダチキン 145g", "kcal": 163.9, "p": 33.8, "f": 2.8, "c": 0, "time": "12:09"}, {"name": "木綿豆腐300g 1個", "kcal": 186, "p": 15, "f": 11.4, "c": 6.6, "time": "12:09"}, {"name": "菓子パン3種", "kcal": 1203, "p": 20.2, "f": 57, "c": 155, "time": "14:51"}, {"name": "自家製サラダチキン 157g", "kcal": 177.4, "p": 36.6, "f": 3, "c": 0, "time": "18:33"}, {"name": "木綿豆腐300g 1個", "kcal": 186, "p": 15, "f": 11.4, "c": 6.6, "time": "18:33"}, {"name": "大きなおにぎり しゃけ", "kcal": 283, "p": 7.7, "f": 2.5, "c": 58.6, "time": "18:33"}, {"name": "十勝バターチョコチップスティック 4本", "kcal": 472, "p": 9.2, "f": 15.2, "c": 76, "time": "18:33"}, {"name": "さつまいも蒸しパン4個入り", "kcal": 340, "p": 4.4, "f": 1.6, "c": 78.4, "time": "18:33"}],
       fit: 1996,
       sleepStart: "00:30",
       sleepEnd: "05:45"
     };
-    count++;
+    localStorage.setItem('preloadedDays', JSON.stringify(preloadedDays));
   }
 
   // Import SimpleWeight body logs (42 days, 2026-02-15~04-01)
@@ -1382,6 +1395,7 @@ function saveBody() {
   if (!w && !f) { showToast('体重か体脂肪率を入力してください'); return; }
   bodyLogs[date] = { weight: w, fat: f, memo };
   localStorage.setItem('bodyLogs', JSON.stringify(bodyLogs));
+  saveToFile();
   document.getElementById('body-weight').value = '';
   document.getElementById('body-fat').value = '';
   document.getElementById('body-memo').value = '';
@@ -1459,7 +1473,7 @@ function switchGraph(type) {
 let chartInst = null;
 
 function getDateRange() {
-  const allDates = Object.keys(days).sort();
+  const allDates = getAllDates();
   if (!allDates.length) return [];
   if (graphRange === -1 && customRangeFrom && customRangeTo) {
     return allDates.filter(d => d >= customRangeFrom && d <= customRangeTo);
@@ -1497,7 +1511,7 @@ function renderGraph() {
 
   if (graphType === 'balance') {
     const bal = dates.map(d => {
-      const day = days[d];
+      const day = getMergedDay(d);
       if (!day || !day.fit) return null;
       const gCardio = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
       return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio);
@@ -1524,7 +1538,7 @@ function renderGraph() {
     const fats = dates.map(d => bodyLogs[d]?.fat || null);
     // Daily calorie balance
     const dailyBal = dates.map(d => {
-      const day = days[d];
+      const day = getMergedDay(d);
       if (!day || !day.fit) return null;
       const gCardio2 = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
       return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio2);
@@ -1536,14 +1550,14 @@ function renderGraph() {
     ];
   } else if (graphType === 'sleep') {
     const dur = dates.map(d => {
-      const day = days[d];
+      const day = getMergedDay(d);
       if (!day || !day.sleepStart || !day.sleepEnd) return null;
       let sm = toMin(day.sleepStart), em = toMin(day.sleepEnd);
       if (em <= sm) em += 24*60;
       return round1((em-sm)/60);
     });
     const bal = dates.map(d => {
-      const day = days[d];
+      const day = getMergedDay(d);
       if (!day || !day.fit) return null;
       const gCardio3 = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
       return round1((day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio3)/1000);
@@ -1623,19 +1637,211 @@ function renderGraph() {
 }
 
 
-// ==================== PWA ====================
+
+// ==================== FILE PERSISTENCE ====================
+const FileDB = {
+  db: null,
+  async open() {
+    if (this.db) return this.db;
+    return new Promise((res, rej) => {
+      const req = indexedDB.open('daily-filedb', 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+      req.onsuccess = e => { this.db = e.target.result; res(this.db); };
+      req.onerror = () => rej(req.error);
+    });
+  },
+  async get(key) {
+    try {
+      await this.open();
+      return new Promise(res => {
+        const req = this.db.transaction('handles','readonly').objectStore('handles').get(key);
+        req.onsuccess = () => res(req.result || null);
+        req.onerror = () => res(null);
+      });
+    } catch(e) { return null; }
+  },
+  async set(key, val) {
+    try {
+      await this.open();
+      return new Promise((res, rej) => {
+        const req = this.db.transaction('handles','readwrite').objectStore('handles').put(val, key);
+        req.onsuccess = () => res();
+        req.onerror = () => rej(req.error);
+      });
+    } catch(e) {}
+  }
+};
+
+let _fileHandle = null;
+
+function setFileStatus(cls, text) {
+  const el = document.getElementById('file-status');
+  if (!el) return;
+  el.className = cls;
+  el.textContent = text;
+}
+
+// 全データをオブジェクトとして返す
+function getAllData() {
+  return {
+    days, gymLogs, bodyLogs,
+    foods: foods.filter(f => f.custom),
+    savedAt: new Date().toISOString()
+  };
+}
+
+// ファイルにデータを書き込む
+async function writeToHandle(handle, data) {
+  const writable = await handle.createWritable();
+  await writable.write(JSON.stringify(data, null, 2));
+  await writable.close();
+}
+
+// ファイルからデータを読み込んでメモリ・localStorageに反映
+function applyData(data) {
+  if (data.days)     { Object.assign(days, data.days);         localStorage.setItem('days', JSON.stringify(days)); }
+  if (data.gymLogs)  { Object.assign(gymLogs, data.gymLogs);   localStorage.setItem('gymLogs', JSON.stringify(gymLogs)); }
+  if (data.bodyLogs) { Object.assign(bodyLogs, data.bodyLogs); localStorage.setItem('bodyLogs', JSON.stringify(bodyLogs)); }
+  if (data.foods)    { data.foods.forEach(f => { if (!foods.find(x=>x.id===f.id)) foods.push(f); }); saveFoods(); }
+}
+
+// 起動時: ファイルから読み込み
+async function loadFromFile() {
+  const supportsAPI = 'showOpenFilePicker' in window;
+  if (!supportsAPI) { setFileStatus('error', '📂 非対応'); return false; }
+
+  const handle = await FileDB.get('saveFile');
+  if (!handle) { setFileStatus('', '📂 未設定'); return false; }
+
+  try {
+    let perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'prompt') {
+      // ユーザージェスチャーが必要 — ボタンタップで権限取得
+      setFileStatus('error', '🔒 タップして読込');
+      const el = document.getElementById('file-status');
+      if (el) el.onclick = async () => {
+        perm = await handle.requestPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          const ok = await readAndApply(handle);
+          if (ok) { refreshAllViews(); el.onclick = () => setupSaveFile(); }
+        }
+      };
+      return false;
+    }
+    if (perm !== 'granted') { setFileStatus('error', '📂 権限なし'); return false; }
+    return await readAndApply(handle);
+  } catch(e) {
+    // ハンドルが無効（サイトデータ削除後など） — 再リンクを促す
+    await FileDB.set('saveFile', null);
+    _fileHandle = null;
+    setFileStatus('error', '🔁 再リンク必要');
+    return false;
+  }
+}
+
+async function readAndApply(handle) {
+  try {
+    const file = await handle.getFile();
+    const text = await file.text();
+    if (!text.trim()) return false; // 空ファイル
+    applyData(JSON.parse(text));
+    _fileHandle = handle;
+    setFileStatus('connected', `✅ ${handle.name}`);
+    document.getElementById('file-status').onclick = () => setupSaveFile();
+    return true;
+  } catch(e) { setFileStatus('error', '⚠️ 読込失敗'); return false; }
+}
+
+// 保存: ファイルへ書き込み
+async function saveToFile() {
+  if (!_fileHandle) {
+    // ハンドルがなければIndexedDBから再取得
+    _fileHandle = await FileDB.get('saveFile');
+    if (!_fileHandle) return false;
+  }
+  try {
+    const perm = await _fileHandle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') return false;
+    await writeToHandle(_fileHandle, getAllData());
+    setFileStatus('connected', `✅ 保存済`);
+    return true;
+  } catch(e) { setFileStatus('error', '⚠️ 書込失敗'); return false; }
+}
+
+// 初回設定 / 再リンク
+async function setupSaveFile() {
+  if (!('showOpenFilePicker' in window)) {
+    showToast('このブラウザはファイル保存に非対応です（Chrome推奨）');
+    return;
+  }
+  try {
+    // Chrome: showOpenFilePickerでreadwrite
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }],
+      multiple: false,
+      // 存在しないファイルも作れるブラウザ向け
+    }).catch(async () => {
+      // ファイルが存在しない場合はcreate: trueで作成
+      if ('showSaveFilePicker' in window) {
+        return [await window.showSaveFilePicker({
+          suggestedName: 'デイリー記録.json',
+          types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }]
+        })];
+      }
+      throw new Error('cancel');
+    });
+
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') { showToast('書き込み権限が必要です'); return; }
+
+    // ファイルが空なら現在データを書き込む、あれば読み込んでマージ
+    const file = await handle.getFile();
+    const text = await file.text();
+    if (text.trim()) {
+      try { applyData(JSON.parse(text)); } catch(e) {}
+    }
+    await writeToHandle(handle, getAllData());
+
+    _fileHandle = handle;
+    await FileDB.set('saveFile', handle);
+    setFileStatus('connected', `✅ ${handle.name}`);
+    document.getElementById('file-status').onclick = () => setupSaveFile();
+    showToast('保存先を設定しました ✓');
+    refreshAllViews();
+  } catch(e) {
+    if (e.name !== 'AbortError' && e.message !== 'cancel') {
+      showToast('設定をキャンセルしました');
+    }
+  }
+}
+
+// ファイルリンクを切断（テスト用）
+function unlinkFile() {
+  _fileHandle = null;
+  FileDB.set('saveFile', null);
+  setFileStatus('', '📂 未設定');
+  document.getElementById('file-status').onclick = () => setupSaveFile();
+}
+
+function refreshAllViews() {
+  loadDay();
+  if (document.getElementById('screen-history').classList.contains('active')) renderHistory();
+  if (document.getElementById('screen-body').classList.contains('active')) { renderBodyLog(); renderGraph(); }
+}
+
+// ==================== PWA ====================// ==================== PWA ====================
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js', {scope: './'})
     .then(() => console.log('SW registered'))
     .catch(e => console.log('SW error:', e));
 }
 
-// Preload runs ONLY when localStorage is completely empty (first install only)
-// Never runs again after the user has any data
-if (!localStorage.getItem('days')) {
+// 起動時: ファイルからデータ読み込み → preload → init
+(async () => {
+  await loadFromFile();
   preloadHistory();
-}
-init();
+  init();
+})();
 </script>
 </body>
 </html>
