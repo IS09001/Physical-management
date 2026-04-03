@@ -1865,19 +1865,40 @@ async function _doSetup(isNew) {
       });
       h2 = h;
     }
-    const perm = await h2.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') { showToast('書き込み権限が必要です'); return; }
-    const file = await h2.getFile();
-    const text = await file.text();
-    if (text.trim()) { try { applyData(JSON.parse(text)); } catch(e) {} }
-    await writeToHandle(h2, getAllData());
-    _fileHandle = h2;
-    await FileDB.set('saveFile', h2);
-    setFileStatus('connected', `✅ ${h2.name}`, () => setupSaveFile());
-    showToast('保存先を設定しました ✓');
-    refreshAllViews();
+
+    // ── Step1: まず読み込み（読み込みのみ → 既存データを復元）──
+    try {
+      const file = await h2.getFile();
+      const text = await file.text();
+      if (text.trim()) {
+        const data = JSON.parse(text);
+        applyData(data);
+        showToast('データを読み込みました ✓');
+        refreshAllViews();
+      }
+    } catch(readErr) {
+      // 読み込み失敗は無視（新規ファイルなら空で正常）
+    }
+
+    // ── Step2: 書き込み権限を取得してファイルリンクを確立 ──
+    let perm = await h2.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      perm = await h2.requestPermission({ mode: 'readwrite' });
+    }
+    if (perm === 'granted') {
+      // 現在の全データ（プリロード済み含む）を書き込み
+      await writeToHandle(h2, getAllData());
+      _fileHandle = h2;
+      await FileDB.set('saveFile', h2);
+      setFileStatus('connected', `✅ ${h2.name}`, () => setupSaveFile());
+      showToast('保存先を設定しました ✓');
+    } else {
+      // 書き込み権限なしでも読み込みは完了済み
+      showToast('読込は完了しました（書込権限なし）');
+      setFileStatus('error', '⚠️ 読取専用', () => setupSaveFile());
+    }
   } catch(e) {
-    if (e.name !== 'AbortError') showToast('ファイル設定に失敗しました');
+    if (e.name !== 'AbortError') showToast('ファイル設定に失敗しました: ' + e.message);
   }
 }
 
