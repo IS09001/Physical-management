@@ -1639,6 +1639,7 @@ function renderGraph() {
 
 
 // ==================== FILE PERSISTENCE ====================
+// ── IndexedDB (ファイルハンドル保存用) ──────────────────────
 const FileDB = {
   db: null,
   async open() {
@@ -1673,154 +1674,25 @@ const FileDB = {
 };
 
 let _fileHandle = null;
+const FILE_API = 'showOpenFilePicker' in window;
 
-function setFileStatus(cls, text) {
+function setFileStatus(cls, text, onclick) {
   const el = document.getElementById('file-status');
   if (!el) return;
   el.className = cls;
   el.textContent = text;
+  if (onclick) el.onclick = onclick;
 }
 
-// 全データをオブジェクトとして返す
 function getAllData() {
-  return {
-    days, gymLogs, bodyLogs,
-    foods: foods.filter(f => f.custom),
-    savedAt: new Date().toISOString()
-  };
+  return { days, gymLogs, bodyLogs, foods: foods.filter(f=>f.custom), savedAt: new Date().toISOString() };
 }
 
-// ファイルにデータを書き込む
-async function writeToHandle(handle, data) {
-  const writable = await handle.createWritable();
-  await writable.write(JSON.stringify(data, null, 2));
-  await writable.close();
-}
-
-// ファイルからデータを読み込んでメモリ・localStorageに反映
 function applyData(data) {
   if (data.days)     { Object.assign(days, data.days);         localStorage.setItem('days', JSON.stringify(days)); }
   if (data.gymLogs)  { Object.assign(gymLogs, data.gymLogs);   localStorage.setItem('gymLogs', JSON.stringify(gymLogs)); }
   if (data.bodyLogs) { Object.assign(bodyLogs, data.bodyLogs); localStorage.setItem('bodyLogs', JSON.stringify(bodyLogs)); }
   if (data.foods)    { data.foods.forEach(f => { if (!foods.find(x=>x.id===f.id)) foods.push(f); }); saveFoods(); }
-}
-
-// 起動時: ファイルから読み込み
-async function loadFromFile() {
-  const supportsAPI = 'showOpenFilePicker' in window;
-  if (!supportsAPI) { setFileStatus('error', '📂 非対応'); return false; }
-
-  const handle = await FileDB.get('saveFile');
-  if (!handle) { setFileStatus('', '📂 未設定'); return false; }
-
-  try {
-    let perm = await handle.queryPermission({ mode: 'readwrite' });
-    if (perm === 'prompt') {
-      // ユーザージェスチャーが必要 — ボタンタップで権限取得
-      setFileStatus('error', '🔒 タップして読込');
-      const el = document.getElementById('file-status');
-      if (el) el.onclick = async () => {
-        perm = await handle.requestPermission({ mode: 'readwrite' });
-        if (perm === 'granted') {
-          const ok = await readAndApply(handle);
-          if (ok) { refreshAllViews(); el.onclick = () => setupSaveFile(); }
-        }
-      };
-      return false;
-    }
-    if (perm !== 'granted') { setFileStatus('error', '📂 権限なし'); return false; }
-    return await readAndApply(handle);
-  } catch(e) {
-    // ハンドルが無効（サイトデータ削除後など） — 再リンクを促す
-    await FileDB.set('saveFile', null);
-    _fileHandle = null;
-    setFileStatus('error', '🔁 再リンク必要');
-    return false;
-  }
-}
-
-async function readAndApply(handle) {
-  try {
-    const file = await handle.getFile();
-    const text = await file.text();
-    if (!text.trim()) return false; // 空ファイル
-    applyData(JSON.parse(text));
-    _fileHandle = handle;
-    setFileStatus('connected', `✅ ${handle.name}`);
-    document.getElementById('file-status').onclick = () => setupSaveFile();
-    return true;
-  } catch(e) { setFileStatus('error', '⚠️ 読込失敗'); return false; }
-}
-
-// 保存: ファイルへ書き込み
-async function saveToFile() {
-  if (!_fileHandle) {
-    // ハンドルがなければIndexedDBから再取得
-    _fileHandle = await FileDB.get('saveFile');
-    if (!_fileHandle) return false;
-  }
-  try {
-    const perm = await _fileHandle.queryPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') return false;
-    await writeToHandle(_fileHandle, getAllData());
-    setFileStatus('connected', `✅ 保存済`);
-    return true;
-  } catch(e) { setFileStatus('error', '⚠️ 書込失敗'); return false; }
-}
-
-// 初回設定 / 再リンク
-async function setupSaveFile() {
-  if (!('showOpenFilePicker' in window)) {
-    showToast('このブラウザはファイル保存に非対応です（Chrome推奨）');
-    return;
-  }
-  try {
-    // Chrome: showOpenFilePickerでreadwrite
-    const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }],
-      multiple: false,
-      // 存在しないファイルも作れるブラウザ向け
-    }).catch(async () => {
-      // ファイルが存在しない場合はcreate: trueで作成
-      if ('showSaveFilePicker' in window) {
-        return [await window.showSaveFilePicker({
-          suggestedName: 'デイリー記録.json',
-          types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }]
-        })];
-      }
-      throw new Error('cancel');
-    });
-
-    const perm = await handle.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') { showToast('書き込み権限が必要です'); return; }
-
-    // ファイルが空なら現在データを書き込む、あれば読み込んでマージ
-    const file = await handle.getFile();
-    const text = await file.text();
-    if (text.trim()) {
-      try { applyData(JSON.parse(text)); } catch(e) {}
-    }
-    await writeToHandle(handle, getAllData());
-
-    _fileHandle = handle;
-    await FileDB.set('saveFile', handle);
-    setFileStatus('connected', `✅ ${handle.name}`);
-    document.getElementById('file-status').onclick = () => setupSaveFile();
-    showToast('保存先を設定しました ✓');
-    refreshAllViews();
-  } catch(e) {
-    if (e.name !== 'AbortError' && e.message !== 'cancel') {
-      showToast('設定をキャンセルしました');
-    }
-  }
-}
-
-// ファイルリンクを切断（テスト用）
-function unlinkFile() {
-  _fileHandle = null;
-  FileDB.set('saveFile', null);
-  setFileStatus('', '📂 未設定');
-  document.getElementById('file-status').onclick = () => setupSaveFile();
 }
 
 function refreshAllViews() {
@@ -1829,7 +1701,171 @@ function refreshAllViews() {
   if (document.getElementById('screen-body').classList.contains('active')) { renderBodyLog(); renderGraph(); }
 }
 
-// ==================== PWA ====================// ==================== PWA ====================
+// ── バックアップステータス更新 ───────────────────────────────
+function updateBackupStatus() {
+  const last = localStorage.getItem('lastBackupDate');
+  if (!last) { setFileStatus('error', '💾 バックアップ未', () => downloadBackup()); return; }
+  const days_ago = Math.floor((Date.now() - new Date(last)) / 86400000);
+  if (days_ago === 0) setFileStatus('connected', '💾 本日済', () => downloadBackup());
+  else if (days_ago <= 2) setFileStatus('', `💾 ${days_ago}日前`, () => downloadBackup());
+  else setFileStatus('error', `⚠️ ${days_ago}日前`, () => downloadBackup());
+}
+
+// ── ダウンロードバックアップ（File API非対応時のフォールバック）──
+function downloadBackup(silent = false) {
+  const data = getAllData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const d = new Date();
+  a.download = `デイリー記録_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  localStorage.setItem('lastBackupDate', new Date().toISOString());
+  if (!silent) showToast('バックアップを保存しました ✓');
+  updateBackupStatus();
+}
+
+// ── ファイル選択でインポート（File API非対応時） ──────────────
+function importFromFileInput() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        applyData(data);
+        localStorage.setItem('lastBackupDate', new Date().toISOString());
+        showToast('データを読み込みました ✓');
+        updateBackupStatus();
+        refreshAllViews();
+      } catch(err) { showToast('読込に失敗しました'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ── File System Access API (Chrome/Edge) ────────────────────
+async function writeToHandle(handle, data) {
+  const writable = await handle.createWritable();
+  await writable.write(JSON.stringify(data, null, 2));
+  await writable.close();
+}
+
+async function readAndApply(handle) {
+  try {
+    const file = await handle.getFile();
+    const text = await file.text();
+    if (text.trim()) applyData(JSON.parse(text));
+    _fileHandle = handle;
+    setFileStatus('connected', `✅ ${handle.name}`, () => setupSaveFile());
+    return true;
+  } catch(e) { setFileStatus('error', '⚠️ 読込失敗', () => setupSaveFile()); return false; }
+}
+
+async function loadFromFile() {
+  if (!FILE_API) {
+    // File API非対応（Brave等）→ localStorageから読み込み、バックアップ状態を表示
+    updateBackupStatus();
+    return false;
+  }
+  const handle = await FileDB.get('saveFile');
+  if (!handle) { setFileStatus('', '📂 未設定', () => setupSaveFile()); return false; }
+  try {
+    let perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'prompt') {
+      setFileStatus('error', '🔒 タップして読込', async () => {
+        perm = await handle.requestPermission({ mode: 'readwrite' });
+        if (perm === 'granted') { const ok = await readAndApply(handle); if (ok) refreshAllViews(); }
+      });
+      return false;
+    }
+    if (perm !== 'granted') { setFileStatus('error', '❌ 権限なし', () => setupSaveFile()); return false; }
+    return await readAndApply(handle);
+  } catch(e) {
+    await FileDB.set('saveFile', null);
+    _fileHandle = null;
+    setFileStatus('error', '🔁 再リンク', () => setupSaveFile());
+    return false;
+  }
+}
+
+async function saveToFile() {
+  if (!FILE_API) {
+    // File API非対応 → localStorageに保存済み、バックアップ状態を更新のみ
+    updateBackupStatus();
+    return false;
+  }
+  if (!_fileHandle) {
+    _fileHandle = await FileDB.get('saveFile');
+    if (!_fileHandle) return false;
+  }
+  try {
+    const perm = await _fileHandle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') return false;
+    await writeToHandle(_fileHandle, getAllData());
+    setFileStatus('connected', '✅ 保存済', () => setupSaveFile());
+    return true;
+  } catch(e) { setFileStatus('error', '⚠️ 書込失敗', () => setupSaveFile()); return false; }
+}
+
+async function setupSaveFile() {
+  if (!FILE_API) {
+    // File API非対応 → ダウンロード方式のメニューを表示
+    const choice = confirm('バックアップファイルをダウンロードしますか？\n\n「キャンセル」を選ぶとバックアップから復元します');
+    if (choice) downloadBackup();
+    else importFromFileInput();
+    return;
+  }
+  try {
+    // まず新規作成（showSaveFilePicker）を試みる → キャンセルなら既存ファイルを選ぶ
+    let handle;
+    if ('showSaveFilePicker' in window) {
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: 'デイリー記録.json',
+          types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }]
+        });
+      } catch(e) {
+        if (e.name === 'AbortError') throw e; // キャンセルはそのまま上に
+        // showSaveFilePicker非対応なら既存ファイル選択へ
+        const [h] = await window.showOpenFilePicker({
+          types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }],
+          multiple: false
+        });
+        handle = h;
+      }
+    } else {
+      const [h] = await window.showOpenFilePicker({
+        types: [{ description: 'JSONデータ', accept: { 'application/json': ['.json'] } }],
+        multiple: false
+      });
+      handle = h;
+    }
+    const [h2] = [handle]; // 変数統一
+    const perm = await h2.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') { showToast('書き込み権限が必要です'); return; }
+    const file = await h2.getFile();
+    const text = await file.text();
+    if (text.trim()) { try { applyData(JSON.parse(text)); } catch(e) {} }
+    await writeToHandle(h2, getAllData());
+    _fileHandle = h2;
+    await FileDB.set('saveFile', h2);
+    setFileStatus('connected', `✅ ${h2.name}`, () => setupSaveFile());
+    showToast('保存先を設定しました ✓');
+    refreshAllViews();
+  } catch(e) {
+    if (e.name !== 'AbortError') showToast('設定をキャンセルしました');
+  }
+}
+
+// ==================== PWA ====================// ==================== PWA ====================// ==================== PWA ====================
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js', {scope: './'})
     .then(() => console.log('SW registered'))
