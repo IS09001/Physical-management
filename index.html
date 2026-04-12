@@ -708,7 +708,10 @@
   <div class="modal">
     <div class="modal-title">
       <span id="detail-date-title">—</span>
-      <button class="modal-close" onclick="closeModal('modal-history-detail')">✕</button>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-secondary btn-sm" onclick="editDayFromDetail()" id="btn-edit-day">✏️ 編集</button>
+        <button class="modal-close" onclick="closeModal('modal-history-detail')">✕</button>
+      </div>
     </div>
     <div id="detail-content"></div>
   </div>
@@ -1123,7 +1126,19 @@ function showDayDetail(date) {
     </div>`;
   });
   document.getElementById('detail-content').innerHTML = html;
+  document.getElementById('btn-edit-day').dataset.date = date;
   openModal('modal-history-detail');
+}
+
+function editDayFromDetail() {
+  const date = document.getElementById('btn-edit-day').dataset.date;
+  if (!date) return;
+  closeModal('modal-history-detail');
+  // 今日タブに移動して日付をセット
+  showScreen('today');
+  document.getElementById('today-date').value = date;
+  loadDay();
+  showToast(`${formatDateJP(date)} を編集中`);
 }
 
 // ==================== GYM ====================
@@ -1492,6 +1507,7 @@ function renderBodyLog() {
           ${b.fat ? `<span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--yellow)">${b.fat}<span style="font-size:10px;color:var(--text3)">%</span></span>` : ''}
           ${b.memo ? `<span style="font-size:10px;color:var(--text3)">${b.memo}</span>` : ''}
         </div>
+        <button class="btn btn-secondary btn-sm" onclick="editBodyEntry('${date}',${i})" style="padding:4px 8px;font-size:10px;">✏️</button>
         <button class="btn btn-danger" onclick="deleteBodyEntry('${date}',${i})">✕</button>
       </div>`).join('');
     return `<div class="history-item" style="cursor:default;">
@@ -1510,6 +1526,27 @@ function deleteBodyEntry(date, idx) {
   saveToFile();
   renderBodyLog();
   renderGraph();
+}
+
+function editBodyEntry(date, idx) {
+  const entries = getBodyEntries(date);
+  const b = entries[idx];
+  if (!b) return;
+  // フォームに値をセット
+  document.getElementById('body-date').value = date;
+  document.getElementById('body-time').value = b.time || '';
+  document.getElementById('body-weight').value = b.weight || '';
+  document.getElementById('body-fat').value = b.fat || '';
+  document.getElementById('body-memo').value = b.memo || '';
+  // 既存エントリを削除（保存時に新規追加されるため）
+  entries.splice(idx, 1);
+  if (entries.length === 0) delete bodyLogs[date];
+  else bodyLogs[date] = entries;
+  localStorage.setItem('bodyLogs', JSON.stringify(bodyLogs));
+  renderBodyLog();
+  // スクロールしてフォームを表示
+  document.querySelector('#screen-body .card').scrollIntoView({ behavior: 'smooth' });
+  showToast('フォームに読み込みました。編集後に保存してください');
 }
 
 function setGraphRange(n) {
