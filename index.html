@@ -514,6 +514,10 @@
       <input type="date" id="body-date">
     </div>
     <div class="form-row">
+      <label>時刻</label>
+      <input type="time" id="body-time">
+    </div>
+    <div class="form-row">
       <label>体重</label>
       <input type="number" id="body-weight" placeholder="kg" step="0.1">
       <span style="font-size:12px;color:var(--text3);margin-left:4px;">kg</span>
@@ -1018,7 +1022,7 @@ function renderHistory() {
     const bal = d.fit ? round1(intake - d.fit - cardioKcal) : null;
     const balStr = bal !== null ? `<span class="history-balance" style="color:${bal>=0?'var(--accent3)':'var(--accent)'}">${bal>=0?'+':''}${bal}</span>` : '';
     const sleepStr = (d.sleepStart && d.sleepEnd) ? sleepDur(d.sleepStart, d.sleepEnd) : null;
-    const bodyEntry = bodyLogs[date];
+    const bodyEntry = getBodyEntries(date)[0] || null;
     return `
       <div class="history-item" onclick="showDayDetail('${date}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -1075,7 +1079,7 @@ function showDayDetail(date) {
   if (d.sleepStart && d.sleepEnd) {
     html += `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">💤 ${d.sleepStart}〜${d.sleepEnd} (${sleepDur(d.sleepStart,d.sleepEnd)})</div>`;
   }
-  const bEntry = bodyLogs[date];
+  const bEntry = getBodyEntries(date)[0] || null;
   if (bEntry) {
     html += `<div style="display:flex;gap:16px;margin-bottom:10px;">
       ${bEntry.weight ? `<div style="font-size:13px;color:var(--accent2)">体重 <b>${bEntry.weight}</b>kg</div>` : ''}
@@ -1293,7 +1297,7 @@ function showScreen(name) {
   document.getElementById('nav-' + name).classList.add('active');
   if (name === 'history') renderHistory();
   if (name === 'foods') renderFoodDB();
-  if (name === 'body') { const _d=new Date(); const _ds=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`; document.getElementById('body-date').value=_ds; renderBodyLog(); renderGraph(); }
+  if (name === 'body') { const _d=new Date(); const _ds=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`; const _ts=`${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}`; document.getElementById('body-date').value=_ds; document.getElementById('body-time').value=_ts; renderBodyLog(); renderGraph(); }
 }
 
 // ==================== EXPORT / IMPORT ====================
@@ -1412,7 +1416,7 @@ function preloadHistory() {
   let bodyUpdated = false;
   Object.entries(importedBody).forEach(([date, [w, f]]) => {
     if (!bodyLogs[date]) {
-      bodyLogs[date] = { weight: w, fat: f, memo: 'SimpleWeightより' };
+      bodyLogs[date] = [{ time: '', weight: w, fat: f, memo: 'SimpleWeightより' }];
       bodyUpdated = true;
     }
   });
@@ -1449,8 +1453,14 @@ function saveBody() {
   const w = parseFloat(document.getElementById('body-weight').value) || null;
   const f = parseFloat(document.getElementById('body-fat').value) || null;
   const memo = document.getElementById('body-memo').value.trim();
+  const time = document.getElementById('body-time').value;
   if (!w && !f) { showToast('体重か体脂肪率を入力してください'); return; }
-  bodyLogs[date] = { weight: w, fat: f, memo };
+  if (!bodyLogs[date]) bodyLogs[date] = [];
+  // 配列でなければ旧形式→変換
+  if (!Array.isArray(bodyLogs[date])) bodyLogs[date] = [bodyLogs[date]];
+  bodyLogs[date].push({ time, weight: w, fat: f, memo });
+  // 時刻順にソート
+  bodyLogs[date].sort((a,b) => (a.time||'').localeCompare(b.time||''));
   localStorage.setItem('bodyLogs', JSON.stringify(bodyLogs));
   saveToFile();
   document.getElementById('body-weight').value = '';
@@ -1461,29 +1471,43 @@ function saveBody() {
   showToast('体組成を保存しました ✓');
 }
 
+function getBodyEntries(date) {
+  const v = bodyLogs[date];
+  if (!v) return [];
+  if (Array.isArray(v)) return v;
+  return [v]; // 旧形式互換
+}
+
 function renderBodyLog() {
   const list = document.getElementById('body-log-list');
   const keys = Object.keys(bodyLogs).sort().reverse().slice(0, 30);
   if (!keys.length) { list.innerHTML = '<div class="empty">記録がありません</div>'; return; }
   list.innerHTML = keys.map(date => {
-    const b = bodyLogs[date];
-    return `<div class="history-item" style="cursor:default;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div class="history-date" style="margin-bottom:0;">${formatDateJP(date)}</div>
-        <div style="display:flex;gap:14px;align-items:center;">
-          ${b.weight ? `<span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--accent2)">${b.weight}<span style="font-size:10px;color:var(--text3)">kg</span></span>` : ''}
-          ${b.fat ? `<span style="font-family:'Space Mono',monospace;font-size:14px;color:var(--yellow)">${b.fat}<span style="font-size:10px;color:var(--text3)">%</span></span>` : ''}
-          <button class="btn btn-danger" onclick="deleteBody('${date}')">削除</button>
+    const entries = getBodyEntries(date);
+    const rows = entries.map((b, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text3);min-width:36px;">${b.time||'—'}</div>
+        <div style="display:flex;gap:10px;align-items:center;flex:1;margin-left:8px;">
+          ${b.weight ? `<span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--accent2)">${b.weight}<span style="font-size:10px;color:var(--text3)">kg</span></span>` : ''}
+          ${b.fat ? `<span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--yellow)">${b.fat}<span style="font-size:10px;color:var(--text3)">%</span></span>` : ''}
+          ${b.memo ? `<span style="font-size:10px;color:var(--text3)">${b.memo}</span>` : ''}
         </div>
-      </div>
-      ${b.memo ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;">${b.memo}</div>` : ''}
+        <button class="btn btn-danger" onclick="deleteBodyEntry('${date}',${i})">✕</button>
+      </div>`).join('');
+    return `<div class="history-item" style="cursor:default;">
+      <div class="history-date" style="margin-bottom:6px;">${formatDateJP(date)}</div>
+      ${rows}
     </div>`;
   }).join('');
 }
 
-function deleteBody(date) {
-  delete bodyLogs[date];
+function deleteBodyEntry(date, idx) {
+  const entries = getBodyEntries(date);
+  entries.splice(idx, 1);
+  if (entries.length === 0) delete bodyLogs[date];
+  else bodyLogs[date] = entries;
   localStorage.setItem('bodyLogs', JSON.stringify(bodyLogs));
+  saveToFile();
   renderBodyLog();
   renderGraph();
 }
@@ -1591,8 +1615,8 @@ function renderGraph() {
       { label:'C(g)', data: cc, borderColor: c.accent3, tension:0.3, pointRadius:2, fill:false },
     ];
   } else if (graphType === 'body') {
-    const weights = dates.map(d => bodyLogs[d]?.weight || null);
-    const fats = dates.map(d => bodyLogs[d]?.fat || null);
+    const weights = dates.map(d => { const e=getBodyEntries(d); return e.length ? (e[0].weight||null) : null; });
+    const fats = dates.map(d => { const e=getBodyEntries(d); return e.length ? (e[0].fat||null) : null; });
     // Daily calorie balance
     const dailyBal = dates.map(d => {
       const day = getMergedDay(d);
@@ -1632,7 +1656,7 @@ function renderGraph() {
       const kcal = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
       return kcal > 0 ? kcal : null;
     });
-    const weights = gymDates.map(d => bodyLogs[d]?.weight||null);
+    const weights = gymDates.map(d => { const e=getBodyEntries(d); return e.length ? (e[0].weight||null) : null; });
     // Override labels for this graph
     if (chartInst) { chartInst.destroy(); chartInst = null; }
     chartInst = new Chart(ctx, {
