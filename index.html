@@ -1317,13 +1317,14 @@ function showScreen(name) {
 
 // ==================== EXPORT / IMPORT ====================
 function exportData() {
-  const data = { days, gymLogs, foods: foods.filter(f => f.custom), exportedAt: new Date().toISOString() };
-  // preloadedDays is excluded — it gets rebuilt on fresh install
+  const data = getAllData(); // days, gymLogs, bodyLogs, foods すべて含む
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
+  const _d = new Date();
+  const ds = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   a.href = url;
-  a.download = `デイリー記録_${new Date().toISOString().split('T')[0]}.json`;
+  a.download = `デイリー記録_${ds}.json`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('エクスポートしました ✓');
