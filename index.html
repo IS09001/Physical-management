@@ -466,6 +466,26 @@
     </div>
   </div>
 
+  <!-- Squat -->
+  <div class="card">
+    <div class="card-title">🦵 バーベルスクワット</div>
+    <div class="form-row">
+      <input type="number" id="sq-weight" placeholder="重量 (kg)" style="flex:2">
+      <span style="color:var(--text3);font-size:12px;">×</span>
+      <input type="number" id="sq-reps" placeholder="回" style="flex:1">
+      <span style="color:var(--text3);font-size:12px;">×</span>
+      <input type="number" id="sq-sets" placeholder="set" style="flex:1">
+      <button class="btn btn-primary btn-sm" onclick="addSqSet()" style="flex-shrink:0;">追加</button>
+    </div>
+    <div id="sq-list"></div>
+    <div class="divider"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:12px;color:var(--text2);">総挙上量</span>
+      <span class="badge" id="sq-total" style="background:var(--accent3);color:#000;">0 kg</span>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;">⚠️ 翌日体重増加に注意（腹下し傾向あり）</div>
+  </div>
+
   <!-- Cardio -->
   <div class="card">
     <div class="card-title">🏃 有酸素</div>
@@ -561,6 +581,7 @@
         <button class="btn btn-primary btn-sm" onclick="applyCustomRange()">適用</button>
       </div>
     </div>
+    <div id="gran-label" style="font-size:10px;color:var(--text3);text-align:right;margin-bottom:4px;"></div>
     <canvas id="main-chart" style="width:100%;max-height:240px;"></canvas>
   </div>
 
@@ -763,6 +784,7 @@ function getAllDates() {
 // Current state
 let currentDay = { meals:[], fit:null, sleepStart:'', sleepEnd:'' };
 let bpSets = [];
+let sqSets = [];
 let cardioList = [];
 let exerciseList = [];
 let selectedFood = null;
@@ -1039,7 +1061,7 @@ function renderHistory() {
           ${d.fit ? `<div class="history-stat">消費 <span>${round1(d.fit + cardioKcal)}</span>kcal</div>` : ''}
           <div class="history-stat">P <span>${p}</span>g</div>
           ${sleepStr ? `<div class="history-stat">💤 <span>${sleepStr}</span></div>` : ''}
-          ${gymLogs[date] ? `<div class="history-stat">🏋️ <span>${(()=>{const g=gymLogs[date];const vol=g.bpSets?.reduce((s,b)=>s+b.vol,0)||0;const cardioKcal=g.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;return [vol?'BP '+vol.toLocaleString()+'kg':'',cardioKcal?'有酸素 '+cardioKcal+'kcal':''].filter(Boolean).join(' / ')||'記録あり';})()} </span></div>` : ''}
+          ${gymLogs[date] ? `<div class="history-stat">🏋️ <span>${(()=>{const g=gymLogs[date];const vol=g.bpSets?.reduce((s,b)=>s+b.vol,0)||0;const sqVol=g.sqSets?.reduce((s,b)=>s+b.vol,0)||0;const cardioKcal=g.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;return [vol?'BP '+vol.toLocaleString()+'kg':'',sqVol?'SQ '+sqVol.toLocaleString()+'kg':'',cardioKcal?'有酸素 '+cardioKcal+'kcal':''].filter(Boolean).join(' / ')||'記録あり';})()} </span></div>` : ''}
         </div>
       </div>
     `;
@@ -1096,6 +1118,15 @@ function showDayDetail(date) {
       html += `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:6px;">`;
       html += `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">ベンチプレス <span style="font-family:'Space Mono',monospace;color:var(--accent);font-weight:700">${bpVol.toLocaleString()}kg</span> 総挙上量</div>`;
       gym.bpSets.forEach(b => {
+        html += `<div style="font-size:11px;color:var(--text3);">${b.w}kg × ${b.r}rep × ${b.s}set = ${b.vol}kg</div>`;
+      });
+      html += `</div>`;
+    }
+    if (gym.sqSets?.length) {
+      const sqVol = gym.sqSets.reduce((s,b)=>s+b.vol,0);
+      html += `<div style="background:var(--bg3);border-radius:8px;padding:8px 12px;margin-bottom:6px;">`;
+      html += `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">バーベルスクワット <span style="font-family:'Space Mono',monospace;color:var(--accent3);font-weight:700">${sqVol.toLocaleString()}kg</span> 総挙上量</div>`;
+      gym.sqSets.forEach(b => {
         html += `<div style="font-size:11px;color:var(--text3);">${b.w}kg × ${b.r}rep × ${b.s}set = ${b.vol}kg</div>`;
       });
       html += `</div>`;
@@ -1163,6 +1194,28 @@ function renderBpList() {
   document.getElementById('bp-total').textContent = total.toLocaleString() + ' kg';
 }
 
+function addSqSet() {
+  const w = parseFloat(document.getElementById('sq-weight').value);
+  const r = parseFloat(document.getElementById('sq-reps').value);
+  const s = parseFloat(document.getElementById('sq-sets').value);
+  if (!w || !r || !s) { showToast('重量・回数・セット数を入力してください'); return; }
+  sqSets.push({ w, r, s, vol: w*r*s });
+  renderSqList();
+}
+
+function renderSqList() {
+  const list = document.getElementById('sq-list');
+  if (!sqSets.length) { list.innerHTML = ''; document.getElementById('sq-total').textContent = '0 kg'; return; }
+  list.innerHTML = sqSets.map((b,i) => `
+    <div class="gym-set">
+      <span class="gym-set-info">${b.w}kg × ${b.r}rep × ${b.s}set</span>
+      <span class="gym-set-vol">${b.vol}kg</span>
+      <button class="btn btn-danger" onclick="sqSets.splice(${i},1);renderSqList()">✕</button>
+    </div>
+  `).join('');
+  document.getElementById('sq-total').textContent = sqSets.reduce((s,b)=>s+b.vol,0).toLocaleString() + ' kg';
+}
+
 function addCardio() {
   const type = document.getElementById('cardio-type').value;
   const min = parseFloat(document.getElementById('cardio-min').value);
@@ -1212,21 +1265,24 @@ function loadGymDay() {
   const existing = gymLogs[date];
   if (existing) {
     bpSets = existing.bpSets ? [...existing.bpSets] : [];
+    sqSets = existing.sqSets ? [...existing.sqSets] : [];
     cardioList = existing.cardioList ? [...existing.cardioList] : [];
     exerciseList = existing.exerciseList ? [...existing.exerciseList] : [];
   } else {
     bpSets = [];
+    sqSets = [];
     cardioList = [];
     exerciseList = [];
   }
   renderBpList();
+  renderSqList();
   renderCardioList();
   renderExList();
 }
 
 function saveGym() {
   const date = document.getElementById('gym-date').value;
-  gymLogs[date] = { bpSets:[...bpSets], cardioList:[...cardioList], exerciseList:[...exerciseList] };
+  gymLogs[date] = { bpSets:[...bpSets], sqSets:[...sqSets], cardioList:[...cardioList], exerciseList:[...exerciseList] };
   localStorage.setItem('gymLogs', JSON.stringify(gymLogs));
   saveToFile();
   showToast('ジム記録を保存しました ✓');
@@ -1599,6 +1655,64 @@ function getDateRange() {
   return allDates.filter(d => d >= cutStr);
 }
 
+// 期間に応じた集計粒度: 日 / 週 / 月
+function getGranularity() {
+  let span = graphRange;
+  if (graphRange === -1 && customRangeFrom && customRangeTo) {
+    span = Math.round((new Date(customRangeTo) - new Date(customRangeFrom)) / 86400000);
+  } else if (graphRange === 0) {
+    const all = getAllDates();
+    span = all.length ? Math.round((new Date(all[all.length-1]) - new Date(all[0])) / 86400000) : 0;
+  }
+  if (span <= 31) return 'day';
+  if (span <= 200) return 'week';
+  return 'month';
+}
+
+// 日付配列をバケットにまとめる
+function buildBuckets(dates, gran) {
+  if (gran === 'day') {
+    return dates.map(d => {
+      const dd = new Date(d + 'T12:00:00');
+      return { label: `${dd.getMonth()+1}/${dd.getDate()}`, dates: [d] };
+    });
+  }
+  const map = {};
+  dates.forEach(d => {
+    let key, label;
+    if (gran === 'week') {
+      const dd = new Date(d + 'T12:00:00');
+      const mon = new Date(dd); mon.setDate(dd.getDate() - ((dd.getDay()+6)%7));
+      key = `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
+      label = `${mon.getMonth()+1}/${mon.getDate()}週`;
+    } else {
+      key = d.slice(0,7);
+      label = `${key.slice(2,4)}/${key.slice(5,7)}`;
+    }
+    if (!map[key]) map[key] = { label, dates: [] };
+    map[key].dates.push(d);
+  });
+  return Object.keys(map).sort().map(k => map[k]);
+}
+
+// バケット単位の平均（null は除外。全部 null なら null）
+function aggAvg(buckets, fn) {
+  return buckets.map(b => {
+    const vals = b.dates.map(fn).filter(v => v !== null && v !== undefined && !isNaN(v));
+    if (!vals.length) return null;
+    return round1(vals.reduce((s,v)=>s+v,0) / vals.length);
+  });
+}
+
+// バケット単位の合計（0 は null 扱いにしない）
+function aggSum(buckets, fn) {
+  return buckets.map(b => {
+    const vals = b.dates.map(fn).filter(v => v !== null && v !== undefined && !isNaN(v));
+    if (!vals.length) return null;
+    return round1(vals.reduce((s,v)=>s+v,0));
+  });
+}
+
 function renderGraph() {
   const canvas = document.getElementById('main-chart');
   const ctx = canvas.getContext('2d');
@@ -1612,7 +1726,11 @@ function renderGraph() {
     return;
   }
 
-  const labels = dates.map(d => { const dd=new Date(d+'T12:00:00'); return `${dd.getMonth()+1}/${dd.getDate()}`; });
+  const gran = getGranularity();
+  const buckets = buildBuckets(dates, gran);
+  const labels = buckets.map(b => b.label);
+  const granEl = document.getElementById('gran-label');
+  if (granEl) granEl.textContent = gran === 'day' ? '日別' : gran === 'week' ? '週別（日平均）' : '月別（日平均）';
 
   const style = getComputedStyle(document.documentElement);
   const c = {
@@ -1624,14 +1742,14 @@ function renderGraph() {
   let datasets = [];
 
   if (graphType === 'balance') {
-    const bal = dates.map(d => {
+    const bal = aggAvg(buckets, d => {
       const day = getMergedDay(d);
       if (!day || !day.fit) return null;
       const gCardio = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
-      return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio);
+      return day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio;
     });
-    const fit = dates.map(d => { const _d=getMergedDay(d); return _d?.fit ? round1(_d.fit+(gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0)) : null; });
-    const intake = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+m.kcal,0)) : null; });
+    const fit = aggAvg(buckets, d => { const _d=getMergedDay(d); return _d?.fit ? _d.fit+(gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0) : null; });
+    const intake = aggAvg(buckets, d => { const _d=getMergedDay(d); return _d ? _d.meals.reduce((s,m)=>s+m.kcal,0) : null; });
     datasets = [
       { label:'摂取', data: intake, borderColor: c.accent2, backgroundColor: c.accent2+'22', tension:0.3, pointRadius:2, fill:false },
       { label:'消費', data: fit, borderColor: c.accent, backgroundColor: c.accent+'22', tension:0.3, pointRadius:2, fill:false },
@@ -1639,42 +1757,48 @@ function renderGraph() {
         tension:0.3, pointRadius:3, fill: { target:'origin', above: c.accent3+'33', below: c.accent+'33' } },
     ];
   } else if (graphType === 'pfc') {
-    const pp = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+(m.p||0),0)) : null; });
-    const ff = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+(m.f||0),0)) : null; });
-    const cc = dates.map(d => { const _d=getMergedDay(d); return _d ? round1(_d.meals.reduce((s,m)=>s+(m.c||0),0)) : null; });
+    const pp = aggAvg(buckets, d => { const _d=getMergedDay(d); return _d ? _d.meals.reduce((s,m)=>s+(m.p||0),0) : null; });
+    const ff = aggAvg(buckets, d => { const _d=getMergedDay(d); return _d ? _d.meals.reduce((s,m)=>s+(m.f||0),0) : null; });
+    const cc = aggAvg(buckets, d => { const _d=getMergedDay(d); return _d ? _d.meals.reduce((s,m)=>s+(m.c||0),0) : null; });
     datasets = [
       { label:'P(g)', data: pp, borderColor: c.accent, tension:0.3, pointRadius:2, fill:false },
       { label:'F(g)', data: ff, borderColor: c.yellow, tension:0.3, pointRadius:2, fill:false },
       { label:'C(g)', data: cc, borderColor: c.accent3, tension:0.3, pointRadius:2, fill:false },
     ];
   } else if (graphType === 'body') {
-    const weights = dates.map(d => { const e=getBodyEntries(d); return e.length ? (e[0].weight||null) : null; });
-    const fats = dates.map(d => { const e=getBodyEntries(d); return e.length ? (e[0].fat||null) : null; });
-    // Daily calorie balance
-    const dailyBal = dates.map(d => {
+    const weights = aggAvg(buckets, d => { const e=getBodyEntries(d); return e.length ? (e[0].weight||null) : null; });
+    const fats = aggAvg(buckets, d => { const e=getBodyEntries(d); return e.length ? (e[0].fat||null) : null; });
+    const dailyBal = aggAvg(buckets, d => {
       const day = getMergedDay(d);
       if (!day || !day.fit) return null;
       const gCardio2 = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
-      return round1(day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio2);
+      return day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio2;
+    });
+    // フリーウエイト(BP/SQ)実施バケットの体重を強調
+    const fwMarker = buckets.map((b, i) => {
+      const hasFW = b.dates.some(d => (gymLogs[d]?.bpSets?.length||0) > 0 || (gymLogs[d]?.sqSets?.length||0) > 0);
+      return (hasFW && weights[i] !== null) ? weights[i] : null;
     });
     datasets = [
-      { label:'体重(kg)', data: weights, borderColor: c.accent2, tension:0.3, pointRadius:4, fill:false, yAxisID:'y', spanGaps:true },
+      { label:'体重(kg)', data: weights, borderColor: c.accent2, tension:0.3, pointRadius:2, fill:false, yAxisID:'y', spanGaps:true },
+      { label:'FW実施', data: fwMarker, type:'scatter', borderColor: c.accent3, backgroundColor: c.accent3+'cc',
+        pointRadius:7, pointStyle:'triangle', yAxisID:'y' },
       { label:'体脂肪率(%)', data: fats, borderColor: c.yellow, tension:0.3, pointRadius:4, fill:false, yAxisID:'y2', spanGaps:true },
       { label:'日次収支(kcal)', data: dailyBal, borderColor: c.accent3, tension:0.2, pointRadius:2, fill:false, borderDash:[4,4], yAxisID:'y3' },
     ];
   } else if (graphType === 'sleep') {
-    const dur = dates.map(d => {
+    const dur = aggAvg(buckets, d => {
       const day = getMergedDay(d);
       if (!day || !day.sleepStart || !day.sleepEnd) return null;
       let sm = toMin(day.sleepStart), em = toMin(day.sleepEnd);
       if (em <= sm) em += 24*60;
-      return round1((em-sm)/60);
+      return (em-sm)/60;
     });
-    const bal = dates.map(d => {
+    const bal = aggAvg(buckets, d => {
       const day = getMergedDay(d);
       if (!day || !day.fit) return null;
       const gCardio3 = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
-      return round1((day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio3)/1000);
+      return (day.meals.reduce((s,m)=>s+m.kcal,0) - day.fit - gCardio3)/1000;
     });
     datasets = [
       { label:'睡眠時間(h)', data: dur, borderColor: c.purple, backgroundColor: c.purple+'33', tension:0.3, pointRadius:3, fill:true, yAxisID:'y' },
@@ -1683,13 +1807,13 @@ function renderGraph() {
   } else if (graphType === 'gym') {
     // Use all dates that have gym logs (not filtered by days)
     const gymDates = Object.keys(gymLogs).sort().filter(d => graphRange === 0 || d >= (() => { const c=new Date(); c.setDate(c.getDate()-graphRange); return `${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,'0')}-${String(c.getDate()).padStart(2,'0')}`; })());
-    const gymLabels = gymDates.map(d => { const dd=new Date(d+'T12:00:00'); return `${dd.getMonth()+1}/${dd.getDate()}`; });
-    const bpVols = gymDates.map(d => gymLogs[d]?.bpSets?.reduce((s,b)=>s+b.vol,0)||null);
-    const cardioKcals = gymDates.map(d => {
-      const kcal = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0;
-      return kcal > 0 ? kcal : null;
-    });
-    const weights = gymDates.map(d => { const e=getBodyEntries(d); return e.length ? (e[0].weight||null) : null; });
+    const gymBuckets = buildBuckets(gymDates, gran);
+    const gymLabels = gymBuckets.map(b => b.label);
+    // 挙上量・消費kcalは期間内の合計、体重は平均
+    const bpVols = aggSum(gymBuckets, d => { const v = gymLogs[d]?.bpSets?.reduce((s,b)=>s+b.vol,0)||0; return v>0?v:null; });
+    const sqVols = aggSum(gymBuckets, d => { const v = gymLogs[d]?.sqSets?.reduce((s,b)=>s+b.vol,0)||0; return v>0?v:null; });
+    const cardioKcals = aggSum(gymBuckets, d => { const k = gymLogs[d]?.cardioList?.reduce((s,c)=>s+c.kcal,0)||0; return k>0?k:null; });
+    const weights = aggAvg(gymBuckets, d => { const e=getBodyEntries(d); return e.length ? (e[0].weight||null) : null; });
     // Override labels for this graph
     if (chartInst) { chartInst.destroy(); chartInst = null; }
     chartInst = new Chart(ctx, {
@@ -1698,6 +1822,7 @@ function renderGraph() {
         labels: gymLabels,
         datasets: [
           { label:'BP総挙上量(kg)', data: bpVols, backgroundColor: c.accent+'88', borderColor: c.accent, borderWidth:1, yAxisID:'y', order:2 },
+          { label:'SQ総挙上量(kg)', data: sqVols, backgroundColor: c.accent3+'88', borderColor: c.accent3, borderWidth:1, yAxisID:'y', order:2 },
           { label:'有酸素(kcal)', data: cardioKcals, backgroundColor: c.accent2+'88', borderColor: c.accent2, borderWidth:1, yAxisID:'y', order:2 },
           { label:'体重(kg)', data: weights, type:'line', borderColor: c.yellow, tension:0.3, pointRadius:4, fill:false, yAxisID:'y2', order:1, spanGaps:true },
         ]
