@@ -12,6 +12,7 @@
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
 
   :root {
+    color-scheme: dark;
     --bg: #0e0f11;
     --bg2: #161719;
     --bg3: #1e2023;
@@ -145,6 +146,31 @@
   select option { background: var(--bg3); }
   input[type="time"] { font-family: 'Space Mono', monospace; }
   input[type="number"] { font-family: 'Space Mono', monospace; }
+
+  /* 日付・時刻: 上の input{-webkit-appearance:none} を打ち消す。
+     none のままだと Chrome がピッカー指標を描画せずタップできない */
+  input[type="time"], input[type="date"], input[type="datetime-local"] {
+    -webkit-appearance: auto;
+    appearance: auto;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    min-height: 44px;          /* タップ領域を確保 */
+  }
+  /* 指標の色は color-scheme:dark が面倒を見るので、当たり判定だけ広げる */
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    padding: 6px;
+    margin-right: -2px;
+    opacity: 0.8;
+  }
+  /* 未入力時の表示文字を薄く、入力済みは通常色 */
+  input[type="time"]::-webkit-datetime-edit,
+  input[type="date"]::-webkit-datetime-edit { color: var(--text); }
 
   .form-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
   .form-row label { font-size: 12px; color: var(--text2); white-space: nowrap; min-width: 40px; }
